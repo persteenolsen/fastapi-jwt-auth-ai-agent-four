@@ -1,4 +1,3 @@
-
 import logging
 from typing import Any
 
@@ -174,6 +173,8 @@ def run_agent(query: str) -> dict[str, Any]:
         }
 
     try:
+
+        # 19-10-2026 - Here starts the "magic" by the 3 lines below
         result = agent_executor.invoke({
             "input": query.strip()
         })
