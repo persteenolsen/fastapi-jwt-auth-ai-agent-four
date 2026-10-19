@@ -21,7 +21,7 @@ The architecture separates agent orchestration, private RAG communication, and p
 | Property | Value |
 |---|---|
 | Version | 0.0.4 |
-| Last Updated | 18-10-2026 |
+| Last Updated | 19-10-2026 |
 | Python | 3.12 |
 | Backend Framework | FastAPI |
 | Frontend Framework | Vue 3 |

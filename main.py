@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(
    title="FastAPI with JWT Authentication Serving an Agentic RAG System Using LangChain",
     description=(
-        "18-10-2026 - FastAPI backend with JWT authentication serving a LangChain-based "
+        "19-10-2026 - FastAPI backend with JWT authentication serving a LangChain-based "
         "agentic RAG system powered by Groq. The LLM dynamically selects "
         "between RAG-based knowledge retrieval and Wikipedia searches "
         "to generate context-aware responses."
