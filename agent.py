@@ -1,4 +1,7 @@
+
+import ast
 import logging
+import re
 from typing import Any
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
@@ -34,6 +37,60 @@ def wikipedia_search(query: str) -> str:
     except Exception:
         logger.exception("Wikipedia tool failed")
         return "Wikipedia search failed. Please try again."
+
+
+# =================================================
+# NEW: EXTRACT PRIVATE RAG METADATA
+# =================================================
+
+def extract_rag_metadata(observation: str) -> dict[str, Any]:
+    """
+    Extract source and status from the existing Private RAG
+    string observation. The observation itself remains unchanged.
+    """
+    text = str(observation or "")
+
+    metadata = {
+        "source": [],
+        "status": "unknown",
+    }
+
+    if "PRIVATE RAG ERROR:" in text:
+        metadata["status"] = "error"
+        return metadata
+
+    if "Status: Document sources were returned." in text:
+        metadata["status"] = "sources_found"
+
+        match = re.search(
+            r"(?m)^Sources:\s*(.+)$",
+            text,
+        )
+
+        if match:
+            raw_sources = match.group(1).strip()
+
+            try:
+                parsed = ast.literal_eval(raw_sources)
+
+                if isinstance(parsed, list):
+                    metadata["source"] = parsed
+                elif isinstance(parsed, dict):
+                    metadata["source"] = [parsed]
+                elif isinstance(parsed, str):
+                    metadata["source"] = [parsed]
+
+            except (ValueError, SyntaxError):
+                # Keep unparseable source references instead of losing them.
+                metadata["source"] = [raw_sources]
+
+        return metadata
+
+    if "NO PRIVATE DOCUMENT SOURCES WERE RETURNED" in text:
+        metadata["status"] = "unverified"
+        return metadata
+
+    return metadata
 
 
 # =================================================
@@ -78,6 +135,7 @@ llm = ChatGroq(
 
 # =================================================
 # AGENT PROMPT
+# Unchanged
 # =================================================
 
 prompt = ChatPromptTemplate.from_messages([
@@ -159,7 +217,7 @@ agent_executor = AgentExecutor(
 # =================================================
 
 def run_agent(query: str) -> dict[str, Any]:
-    """Run the agent and return its answer and tool information."""
+    """Run the agent and return its answer, sources, and status."""
 
     if not isinstance(query, str) or not query.strip():
         return {
@@ -169,12 +227,12 @@ def run_agent(query: str) -> dict[str, Any]:
                 "observation": [],
                 "final_answer": "Please enter a question.",
                 "tools_used": [],
+                "source": [],
+                "status": "unknown",
             }
         }
 
     try:
-
-        # 19-10-2026 - Here starts the "magic" by the 3 lines below
         result = agent_executor.invoke({
             "input": query.strip()
         })
@@ -183,6 +241,8 @@ def run_agent(query: str) -> dict[str, Any]:
 
         observations = []
         tools_used = []
+        sources = []
+        rag_statuses = []
         last_action_input = ""
 
         for action, observation in steps:
@@ -194,17 +254,49 @@ def run_agent(query: str) -> dict[str, Any]:
 
             last_action_input = tool_input
 
+            # Preserve the original observation for existing consumers.
+            observation_text = str(observation)
+
             observations.append({
                 "tool": tool_name,
                 "tool_input": tool_input,
-                "observation": str(observation),
+                "observation": observation_text,
             })
 
-        # Preserve order and remove duplicate names.
+            # NEW: extract metadata from Private RAG observations.
+            if tool_name == "Private_RAG":
+                metadata = extract_rag_metadata(observation_text)
+
+                rag_statuses.append(metadata["status"])
+                sources.extend(metadata["source"])
+
+        # Preserve tool order and remove duplicate names.
         tools_used = list(dict.fromkeys(tools_used))
+
+        # NEW: remove duplicate source entries.
+        unique_sources = []
+        seen_sources = set()
+
+        for source in sources:
+            source_key = repr(source)
+
+            if source_key not in seen_sources:
+                seen_sources.add(source_key)
+                unique_sources.append(source)
+
+        # NEW: derive status from Private RAG results, not LLM wording.
+        if "error" in rag_statuses:
+            status = "error"
+        elif "unverified" in rag_statuses:
+            status = "unverified"
+        elif "sources_found" in rag_statuses:
+            status = "sources_found"
+        else:
+            status = "unknown"
 
         return {
             "response": {
+                # Existing fields remain unchanged.
                 "action": (
                     ", ".join(tools_used)
                     if tools_used
@@ -214,6 +306,10 @@ def run_agent(query: str) -> dict[str, Any]:
                 "observation": observations,
                 "final_answer": result.get("output", ""),
                 "tools_used": tools_used,
+
+                # NEW: structured metadata for the API and Vue.
+                "source": unique_sources,
+                "status": status,
             }
         }
 
@@ -235,5 +331,9 @@ def run_agent(query: str) -> dict[str, Any]:
                     "request. Please try again."
                 ),
                 "tools_used": [],
+
+                # NEW: stable metadata fields on failure.
+                "source": [],
+                "status": "error",
             }
         }

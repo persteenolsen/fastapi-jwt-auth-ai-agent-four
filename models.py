@@ -1,6 +1,6 @@
 
-from typing import Any, Optional
-from pydantic import BaseModel
+from typing import Any
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
@@ -20,9 +20,13 @@ class ChatRequest(BaseModel):
 class AgentResponse(BaseModel):
     action: str
     action_input: Any = None
-    observation: list[dict] = []
+    observation: list[dict] = Field(default_factory=list)
     final_answer: str
-    tools_used: list[str] = []
+    tools_used: list[str] = Field(default_factory=list)
+
+    # New fields
+    source: list[Any] = Field(default_factory=list)
+    status: str = "unknown"
 
 
 class ChatResponse(BaseModel):
