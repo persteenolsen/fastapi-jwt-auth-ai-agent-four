@@ -60,7 +60,7 @@ The architecture separates agent orchestration, private RAG communication, and p
 The agent uses Groq for inference and has access to two tools:
 
 - **Private_RAG** — Retrieves private knowledge from Domain B.
-- **Wikipedia** — Retrieves publicly available information.
+- **Wikipedia** — Retrieves public information using Wikipedia's REST summary API and search API. The tool attempts a direct article lookup first, falls back to a search limited to five candidates, and ranks retrieved summaries using lightweight keyword matching that prioritizes article-title matches.
 
 The system prompt instructs the agent to call `Private_RAG` before answering, inspect its result, and use Wikipedia when additional public information is useful.
 
@@ -82,6 +82,24 @@ The agent can:
 | API Key | Environment variable |
 
 LangChain manages tool invocation, observations, and final response generation.
+
+### 🌐 Wikipedia Public Knowledge Tool
+
+Implemented in `tools/wikipedia.py`, this tool provides supplementary public information to the LangChain agent.
+
+Responsibilities include:
+
+- Direct Wikipedia article-summary lookup.
+- Search fallback when direct lookup fails.
+- Search limited to five candidate article titles.
+- Lightweight keyword-based ranking that gives greater weight to article-title matches.
+- HTTP request timeouts of seven seconds per request.
+- Structured success and failure responses.
+- Error logging and graceful handling of failed requests.
+
+The tool returns an article title and summary when a page is retrieved. Its current keyword-based ranking is lightweight and does not guarantee semantic relevance. Wikipedia results supplement public knowledge; they do not verify private organizational facts.
+
+The seven-second timeout applies to each individual HTTP request, not the total duration of a complete Wikipedia lookup.
 
 ### 📚 Private RAG — Domain B
 
@@ -461,6 +479,8 @@ This project is suitable for applications that combine private organizational kn
 - The JWT cache is process-local and is not shared between worker processes.
 - Agent execution is limited to four iterations and a 25-second execution-time limit.
 - Demo authentication settings may require hardening before production deployment.
+- Wikipedia relevance ranking uses keyword matching rather than semantic search, so an ambiguous query may still return a less relevant article.
+- Wikipedia's seven-second HTTP timeouts apply per request; a lookup involving multiple requests can take longer overall.
 
 ## 🚀 Future Improvements
 

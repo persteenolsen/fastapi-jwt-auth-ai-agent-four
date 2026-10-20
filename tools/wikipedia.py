@@ -4,6 +4,7 @@ import urllib.parse
 from typing import Dict, Any, List, Optional
 
 import requests
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,9 @@ def _fetch_page(title: str) -> Optional[Dict[str, Any]]:
     try:
         safe_title = urllib.parse.quote(title.replace(" ", "_"))
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{safe_title}"
-
-        r = session.get(url, timeout=10)
+        
+        # 20-10-2026 - Changed to 7 from 10
+        r = session.get(url, timeout=7)
         if r.status_code != 200:
             return None
 
@@ -56,7 +58,9 @@ def _search(query: str) -> List[str]:
                 "srlimit": 5,
                 "format": "json"
             },
-            timeout=10
+
+             # 20-10-2026 - Changed to 7 from 10
+            timeout=7
         )
 
         r.raise_for_status()
@@ -72,12 +76,39 @@ def _search(query: str) -> List[str]:
 # ------------------------------
 # SIMPLE SCORING (KEY FIX)
 # ------------------------------
+STOP_WORDS = {
+    "a", "an", "the", "is", "are", "was", "were",
+    "what", "who", "when", "where", "why", "how",
+    "for", "to", "of", "in", "on", "and", "or",
+    "does", "do", "did", "can", "could", "with",
+    "about", "explain", "tell", "me", "please"
+}
+
+
+def _tokens(text: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"\b[a-z0-9]+\b", text.lower())
+        if word not in STOP_WORDS and len(word) > 1
+    }
+
+
 def _score(query: str, title: str, text: str) -> int:
-    q_words = set(query.lower().split())
+    query_words = _tokens(query)
 
-    content = (title + " " + text).lower()
-    return sum(1 for w in q_words if w in content)
+    if not query_words:
+        return 0
 
+    title_words = _tokens(title)
+    content_words = _tokens(text)
+
+    title_matches = query_words & title_words
+    content_matches = query_words & content_words
+
+    return (
+        3 * len(title_matches)
+        + len(content_matches - title_matches)
+    )
 
 # ------------------------------
 # MAIN TOOL
