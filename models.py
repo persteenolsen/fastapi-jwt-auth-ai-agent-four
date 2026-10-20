@@ -1,5 +1,5 @@
+from typing import Any, Literal
 
-from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -17,14 +17,25 @@ class ChatRequest(BaseModel):
     message: str
 
 
+class PrivateRAGResult(BaseModel):
+    """Structured result returned by the private knowledge service."""
+
+    answer: str
+    source: list[Any] = Field(default_factory=list)
+    status: Literal[
+        "sources_found",
+        "unverified",
+        "error",
+    ] = "unverified"
+    error: str | None = None
+
+
 class AgentResponse(BaseModel):
     action: str
     action_input: Any = None
     observation: list[dict] = Field(default_factory=list)
     final_answer: str
     tools_used: list[str] = Field(default_factory=list)
-
-    # New fields
     source: list[Any] = Field(default_factory=list)
     status: str = "unknown"
 

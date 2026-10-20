@@ -1,4 +1,3 @@
-
 import logging
 import threading
 import time
@@ -30,6 +29,9 @@ _jwt_b = None
 _jwt_b_expires_at = 0.0
 _jwt_lock = threading.Lock()
 
+# Retry one time for transient failures.
+MAX_RAG_ATTEMPTS = 2
+
 
 def domain_b_url(path: str) -> str:
     """Build a URL for an endpoint on Domain B."""
@@ -41,10 +43,7 @@ def domain_b_url(path: str) -> str:
 # =================================================
 
 def login_to_domain_b(force_refresh: bool = False) -> str:
-    """
-    Log in to Domain B using form-encoded credentials.
-    Cache the JWT on the server.
-    """
+    """Log in to Domain B and cache its JWT."""
     global _jwt_b, _jwt_b_expires_at
 
     if not DOMAIN_B_USERNAME or not DOMAIN_B_PASSWORD:
@@ -93,38 +92,48 @@ def login_to_domain_b(force_refresh: bool = False) -> str:
 # PRIVATE RAG STRUCTURED RESULT
 # =================================================
 
+def _error_result(
+    answer: str,
+    error: str,
+) -> dict[str, Any]:
+    """Build a consistent structured error result."""
+    return {
+        "answer": answer,
+        "source": [],
+        "status": "error",
+        "error": error,
+    }
+
+
 def rag_search_structured(query: str) -> dict[str, Any]:
     """
-    Return structured RAG data for the agent/backend.
+    Query Domain B and return structured RAG data.
 
-    NEW: source and status are returned as separate fields.
-    The existing rag_search() below still converts this to text
-    for LangChain, preserving the existing tool interface.
+    Retries once after transient request failures, timeouts,
+    or HTTP 5xx responses.
+
+    HTTP 401 triggers a JWT refresh and one immediate retry.
     """
-    logger.warning("========== PRIVATE RAG TOOL CALLED ==========")
-    logger.warning("RAG QUERY: %s", query)
 
-    try:
-        token = login_to_domain_b()
+    logger.info("Private RAG tool called.")
 
-        url = domain_b_url(DOMAIN_B_ASK_PATH)
+    if not isinstance(query, str) or not query.strip():
+        return {
+            "answer": "Please provide a question.",
+            "source": [],
+            "status": "unverified",
+            "error": None,
+        }
 
-        response = http.post(
-            url,
-            json={"prompt": query},
-            headers={
-                "Authorization": f"Bearer {token}",
-            },
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
+    url = domain_b_url(DOMAIN_B_ASK_PATH)
+    last_error = "request_failed"
 
-        # Refresh JWT and retry once if unauthorized.
-        if response.status_code == 401:
-            logger.warning(
-                "Domain B returned 401; refreshing JWT."
-            )
+    for attempt in range(1, MAX_RAG_ATTEMPTS + 1):
+        try:
+            token = login_to_domain_b()
 
-            token = login_to_domain_b(force_refresh=True)
+            # 20-10-2026 - Debbuging
+            logger.info("Sending request to Domain B, attempt %s", attempt)
 
             response = http.post(
                 url,
@@ -135,94 +144,121 @@ def rag_search_structured(query: str) -> dict[str, Any]:
                 timeout=HTTP_TIMEOUT_SECONDS,
             )
 
-        logger.info(
-            "Private RAG HTTP status: %s",
-            response.status_code,
-        )
+            # Refresh JWT and retry immediately once on 401.
+            if response.status_code == 401:
+                logger.warning(
+                    "Domain B returned 401; refreshing JWT."
+                )
 
-        response.raise_for_status()
+                token = login_to_domain_b(force_refresh=True)
 
-        data = response.json()
+                response = http.post(
+                    url,
+                    json={"prompt": query},
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                    },
+                    timeout=HTTP_TIMEOUT_SECONDS,
+                )
 
-        if not isinstance(data, dict):
-            raise ValueError(
-                "Domain B returned an unexpected JSON response."
-            )
+            # Retry server-side errors if another attempt remains.
+            if response.status_code >= 500:
+                last_error = "server_error"
 
-        logger.info(
-            "Private RAG response keys: %s",
-            list(data.keys()),
-        )
+                if attempt < MAX_RAG_ATTEMPTS:
+                    logger.warning(
+                        "Domain B returned HTTP %s; "
+                        "retrying attempt %s.",
+                        response.status_code,
+                        attempt + 1,
+                    )
+                    continue
 
-        answer = data.get("answer") or "No answer was returned."
+                response.raise_for_status()
 
-        # NEW: normalize source data for the API response.
-        raw_sources = data.get("sources") or []
+            response.raise_for_status()
 
-        if isinstance(raw_sources, list):
-            sources = raw_sources
-        elif isinstance(raw_sources, dict):
-            sources = [raw_sources]
-        else:
-            sources = [raw_sources] if raw_sources else []
+            data = response.json()
 
-        # NEW: distinguish source availability from answer correctness.
-        if sources:
+            if not isinstance(data, dict):
+                raise ValueError(
+                    "Domain B returned an unexpected JSON response."
+                )
+
+            answer = data.get("answer") or "No answer was returned."
+            raw_sources = data.get("sources") or []
+
+            if isinstance(raw_sources, list):
+                sources = raw_sources
+            elif isinstance(raw_sources, dict):
+                sources = [raw_sources]
+            else:
+                sources = [raw_sources] if raw_sources else []
+
             return {
-                "answer": answer,
+                "answer": str(answer),
                 "source": sources,
-                "status": "sources_found",
+                "status": (
+                    "sources_found" if sources else "unverified"
+                ),
                 "error": None,
             }
 
-        return {
-            "answer": answer,
-            "source": [],
-            "status": "unverified",
-            "error": None,
-        }
+        except requests.Timeout:
+            last_error = "timeout"
 
-    except requests.Timeout:
-        logger.warning("Domain B RAG request timed out.")
+            logger.warning(
+                "Domain B request timed out (attempt %s/%s).",
+                attempt,
+                MAX_RAG_ATTEMPTS,
+            )
 
-        # NEW: structured error status.
-        return {
-            "answer": (
-                "The request timed out. "
-                "No verified result was obtained from Domain B."
-            ),
-            "source": [],
-            "status": "error",
-            "error": "timeout",
-        }
+            if attempt < MAX_RAG_ATTEMPTS:
+                continue
 
-    except requests.RequestException:
-        logger.exception("Domain B RAG HTTP request failed.")
+            return _error_result(
+                (
+                    "The request timed out. "
+                    "No verified result was obtained from Domain B."
+                ),
+                last_error,
+            )
 
-        # NEW: structured error status.
-        return {
-            "answer": (
-                "Domain B is unavailable or the request failed. "
-                "No verified result was obtained."
-            ),
-            "source": [],
-            "status": "error",
-            "error": "request_failed",
-        }
+        except requests.RequestException:
+            last_error = "request_failed"
 
-    except Exception:
-        logger.exception("Domain B RAG tool failed.")
+            logger.exception(
+                "Domain B HTTP request failed (attempt %s/%s).",
+                attempt,
+                MAX_RAG_ATTEMPTS,
+            )
 
-        # NEW: structured error status.
-        return {
-            "answer": (
-                "The tool could not complete the request. "
-                "Check the server configuration and logs."
-            ),
-            "source": [],
-            "status": "error",
-            "error": "tool_failed",
-        }
+            if attempt < MAX_RAG_ATTEMPTS:
+                continue
+
+            return _error_result(
+                (
+                    "Domain B is unavailable or the request failed. "
+                    "No verified result was obtained."
+                ),
+                last_error,
+            )
+
+        except Exception:
+            logger.exception("Private RAG tool failed.")
+
+            return _error_result(
+                (
+                    "The tool could not complete the request. "
+                    "Check the server configuration and logs."
+                ),
+                "tool_failed",
+            )
+
+    return _error_result(
+        "Domain B did not return a successful result.",
+        last_error,
+    )
 
 
 # =================================================
@@ -231,18 +267,18 @@ def rag_search_structured(query: str) -> dict[str, Any]:
 
 def rag_search(query: str) -> str:
     """
-    Preserve the existing string-based LangChain tool interface.
+    Preserve the original string-based LangChain tool interface.
 
-    NEW: build the existing human-readable tool output from the
-    structured result returned by rag_search_structured().
+    The agent will be updated separately to avoid making an
+    unnecessary second successful Domain B request.
     """
+
     result = rag_search_structured(query)
 
     answer = result["answer"]
     sources = result["source"]
     status = result["status"]
 
-    # Keep existing output style for document-backed answers.
     if status == "sources_found":
         return (
             "PRIVATE RAG RESULTS\n"
@@ -255,7 +291,6 @@ def rag_search(query: str) -> str:
             f"Sources: {sources}"
         )
 
-    # Keep existing output style for answers without sources.
     if status == "unverified":
         return (
             "PRIVATE RAG RESULTS\n"
@@ -272,11 +307,16 @@ def rag_search(query: str) -> str:
             "were returned."
         )
 
-    # Preserve the existing error wording for the LLM.
     if result.get("error") == "timeout":
         return (
             "PRIVATE RAG ERROR: The request timed out. "
             "No verified result was obtained from Domain B."
+        )
+
+    if result.get("error") == "server_error":
+        return (
+            "PRIVATE RAG ERROR: Domain B returned a server error. "
+            "No verified result was obtained."
         )
 
     if result.get("error") == "request_failed":
