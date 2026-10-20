@@ -175,13 +175,13 @@ def create_request_agent(
     Concurrent requests therefore cannot overwrite each other's
     RAG results, and the tool does not call Domain B again.
     """
-
+    
     def private_rag_tool(query: str) -> str:
         """Return this request's already-fetched RAG result."""
         return format_rag_result(
             query=query,
             result=rag_result,
-        )
+     )
 
     request_tools = [
         Tool(
