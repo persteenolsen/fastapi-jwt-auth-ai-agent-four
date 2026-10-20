@@ -104,6 +104,7 @@ Responsibilities include:
 {
   "prompt": "What does our internal documentation say about Spring Boot?"
 }
+```
 
 ### 🔄 Request Workflow
 
@@ -434,6 +435,19 @@ The companion Vue 3 application provides:
 **Companion repository:** `vue-fastapi-jwt-auth-ai-agent-four`
 
 Domain B service credentials and tokens must remain on the backend and must never be exposed to the browser.
+
+## 🎯 Use Cases
+
+This project is suitable for applications that combine private organizational knowledge with public information through an authenticated AI chat interface.
+
+- **Internal Knowledge Assistants:** Answer employee questions using private documentation, technical guides, and organizational knowledge.
+- **Technical Documentation Search:** Retrieve information from internal API documentation, architecture decisions, and development guidelines.
+- **Private and Public Knowledge Comparison:** Compare internal implementations and policies with publicly available information.
+- **AI-Powered Customer Support:** Build authenticated support assistants that retrieve approved knowledge base content and supplement it with public resources.
+- **Enterprise RAG Applications:** Integrate protected retrieval services with LLM-powered agents while keeping service credentials on the backend.
+- **AI Agent Prototyping:** Explore LangChain tool calling, JWT authentication, source-aware responses, and multi-service application architecture.
+
+**Note:** Private knowledge access depends on the configured Domain B RAG service, available documents, and authentication permissions. Retrieved source references do not automatically guarantee that every generated claim is supported by the underlying documents.
 
 ## ⚠️ Current Limitations
 
