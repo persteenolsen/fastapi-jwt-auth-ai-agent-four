@@ -1,348 +1,178 @@
+# 🚀 FastAPI Agentic RAG with JWT Authentication
 
-# 🚀 FastAPI Agentic RAG System with JWT Authentication
+A full-stack AI application built with **FastAPI, Vue 3, Pinia, LangChain, Groq, and JWT authentication**.
 
-A full-stack AI application built with **FastAPI, Vue 3, Pinia, LangChain, Groq LLMs, and JWT authentication**.
+The application combines an authenticated chat interface with a LangChain tool-calling agent that accesses two knowledge sources:
 
-The application provides an authenticated AI chat interface powered by a LangChain tool-calling agent. The agent can access two knowledge sources:
+- **Private RAG:** A protected retrieval service hosted on Domain B.
+- **Wikipedia:** A public knowledge source for supplementary information.
 
-- **Private RAG:** A Retrieval-Augmented Generation (RAG) service hosted on Domain B.
-- **Wikipedia:** A public information source.
+Domain A authenticates with Domain B, submits questions to its protected RAG endpoint, and receives generated answers and document source references.
 
-Domain A authenticates with Domain B, sends questions to its protected `/ask` endpoint, and receives generated answers and document source references.
-
-The architecture separates agent orchestration, private RAG communication, and public knowledge retrieval into independent modules, making the system easier to maintain and extend.
+The architecture separates agent orchestration, private RAG communication, and public knowledge retrieval into independent modules for maintainability, security, and extensibility.
 
 ## 🌐 Companion Vue Frontend
 
-[vue-fastapi-jwt-auth-ai-agent-four](https://github.com/persteenolsen/vue-fastapi-jwt-auth-ai-agent-four)
+**Repository:** [vue-fastapi-jwt-auth-ai-agent-four](https://github.com/your-username/vue-fastapi-jwt-auth-ai-agent-four)
+
+> Replace the placeholder GitHub URL with the actual frontend repository URL.
 
 ## 📌 Project Information
 
 | Property | Value |
 |---|---|
 | Version | 0.0.4 |
-| Last Updated: | 20-10-2026 |
+| Last Updated | 2026-10-20 |
 | Python | 3.12 |
-| Backend Framework | FastAPI |
-| Frontend Framework | Vue 3 |
+| Backend | FastAPI |
+| Frontend | Vue 3 |
 | State Management | Pinia |
-| Authentication | JWT (HS256) |
+| Authentication | JWT |
 | LLM Provider | Groq |
-| Current Model | `openai/gpt-oss-20b` |
+| Model | `openai/gpt-oss-20b` |
 | Agent Framework | LangChain |
-| Architecture | Tool-calling agent with private RAG and Wikipedia |
 | Private Knowledge Storage | PostgreSQL on Neon, managed by Domain B |
-
-## 🎯 Use Cases
-
-- AI assistants and knowledge assistants
-- Private document question-answering systems
-- Enterprise AI applications
-- Tool-augmented LLM systems
-- Research assistants
-- Customer support assistants
-- Developer assistants
-- Information retrieval systems
-- Full-stack AI applications
-- Educational projects involving agentic RAG
 
 ## ✨ Features
 
 ### 🔐 Authentication and Security
 
-The FastAPI backend provides JWT-protected API endpoints and authentication for the Vue frontend.
-
-Features include:
-
-- JWT authentication
-- OAuth2-compatible token endpoint
-- SPA login endpoint
-- Bearer token authorization
-- Environment-based configuration
-- Protected chat endpoints
-- Separate service-to-service authentication between Domain A and Domain B
+- JWT-protected API endpoints.
+- SPA login and OAuth2-compatible authentication.
+- Bearer token authorization.
+- Environment-based configuration.
+- Separate service-to-service authentication between Domain A and Domain B.
+- In-memory caching of the Domain B access token.
+- JWT refresh and retry after an HTTP `401 Unauthorized` response.
+- Separation of frontend authentication credentials from backend service credentials.
 
 #### Authentication Endpoints
 
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/login-spa` | Login for the Vue SPA |
-| POST | `/token` | OAuth2-compatible login for Swagger |
+| `POST` | `/login-spa` | Vue SPA login |
+| `POST` | `/token` | OAuth2-compatible login for Swagger UI |
 
-Domain A uses configured service credentials to authenticate with Domain B. Domain B issues an access token that Domain A caches and reuses until the configured cache period expires.
-
-If Domain B returns HTTP `401 Unauthorized` when querying the RAG endpoint, Domain A refreshes the token and retries the request once.
-
-> **Security note:** Keep all API keys, passwords, JWT secrets, and service credentials in environment variables. Never commit secrets to GitHub.
+**Security notice:** Keep API keys, passwords, JWT secrets, and service credentials in environment variables. Never commit secrets to GitHub.
 
 ### 🤖 LangChain Tool-Calling Agent
 
-The backend uses LangChain's native tool-calling architecture.
+The agent uses Groq for inference and has access to two tools:
 
-The agent has access to two tools:
+- **Private_RAG** — Retrieves private knowledge from Domain B.
+- **Wikipedia** — Retrieves publicly available information.
 
-- **`Private_RAG`** — Queries the private knowledge base hosted on Domain B.
-- **`Wikipedia`** — Retrieves publicly available information.
-
-The Groq LLM determines which tools to invoke based on the user's question and the system prompt.
+The system prompt instructs the agent to call `Private_RAG` before answering, inspect its result, and use Wikipedia when additional public information is useful.
 
 The agent can:
 
-- Call `Private_RAG` for internal documents and private knowledge.
-- Call Wikipedia for public information.
-- Use both tools when additional public information is useful.
-- Inspect tool observations before generating its final answer.
-- Report missing private document sources.
-- Distinguish private document evidence from general public knowledge.
-- Return intermediate tool execution details to the frontend.
+- Retrieve information from private documents.
+- Supplement private results with public information.
+- Distinguish retrieved private evidence from general knowledge.
+- Identify answers that lack private document sources.
+- Return tool calls, inputs, observations, and the final answer.
 
-The current system prompt instructs the agent to call `Private_RAG` before answering questions, then use Wikipedia when additional public information is useful.
-
-### 🧠 Groq LLM Integration
-
-The application uses Groq for LLM inference.
+### 🧠 Groq LLM
 
 | Setting | Value |
 |---|---|
 | Model | `openai/gpt-oss-20b` |
 | Temperature | `0` |
 | Streaming | Disabled |
-| API Key | Configured through environment variables |
+| API Key | Environment variable |
 
-The LLM is responsible for selecting tools, generating tool-call arguments, interpreting tool observations, and producing the final response.
+LangChain manages tool invocation, observations, and final response generation.
 
-### 📚 Private RAG Tool — Domain B
+### 📚 Private RAG — Domain B
 
-The private RAG integration is implemented in `tools/private_rag.py`.
-
-This module communicates with Domain B's protected RAG API.
+Implemented in `tools/private_rag.py`, this module handles communication with the protected RAG API.
 
 Responsibilities include:
 
-- Creating and reusing an HTTP session
-- Authenticating with Domain B
-- Caching the Domain B JWT
-- Refreshing the JWT after an unauthorized response
-- Sending questions to the protected `/ask` endpoint
-- Processing answers and source references
-- Handling HTTP errors and timeouts
-- Returning retrieval results to the LangChain agent
+- HTTP session management.
+- Domain B authentication and JWT caching.
+- Authenticated requests to the RAG endpoint.
+- Token refresh after HTTP `401` responses.
+- Configurable request timeouts.
+- Retries for selected transient failures and server errors.
+- Structured answers and source references.
+- Verification status and error handling.
 
-#### Request Format
+#### Example Request
 
-    {
-      "prompt": "What does our internal document say about Spring Boot?"
-    }
+```json
+{
+  "prompt": "What does our internal documentation say about Spring Boot?"
+}
 
-The request includes a bearer token:
-
-    Authorization: Bearer <DOMAIN_B_ACCESS_TOKEN>
-
-#### Expected Response Format
-
-    {
-      "answer": "The answer generated by the RAG service.",
-      "sources": [
-        "https://example.com/document.txt"
-      ]
-    }
-
-The example source URL is a placeholder.
-
-#### Source-Aware Responses
-
-Source-Aware Responses and Status
-
-The private RAG integration returns structured metadata alongside the answer.
-
-When document sources are returned:
-
-status is set to "sources_found".
-source contains the document source references returned by Domain B.
-The agent is instructed to assess source relevance before attributing individual claims to documents.
-
-When no document sources are returned:
-
-status is set to "unverified".
-source is an empty array ([]).
-The agent is instructed not to present the answer as verified private knowledge.
-
-When Private RAG or agent execution fails:
-
-status is set to "error" when the failure is detected by the backend.
-source is an empty array when no source references are available.
-
-The "unknown" status is used when the evidence status cannot be determined.
-
-These statuses describe private document evidence and execution outcomes. "sources_found" confirms that source references were returned; it does not guarantee that every claim in the answer is supported by those sources. Likewise, "unverified" means that no private document sources were returned, not necessarily that the answer is incorrect.
-
-The source field currently contains private RAG source references. Wikipedia references are not automatically included in this field.
-
-> **Important:** A returned source reference does not automatically prove that the retrieved document supports the answer. Retrieval relevance and source content must still be assessed.
-
-### 🌐 Wikipedia Tool
-
-The Wikipedia integration is maintained separately in `tools/wikipedia.py`.
-
-The agent accesses the existing Wikipedia implementation through a wrapper in `agent.py`.
-
-The wrapper provides:
-
-- Public knowledge retrieval
-- Result normalization
-- Error handling
-- A consistent string response for the agent
-
-Wikipedia can supplement private RAG results with public information. However, public information does not independently verify private organizational facts.
-
-
-### 🧾 Intermediate Steps and Observability
-
-The agent executor is configured with:
-
-```python
-verbose=True
-return_intermediate_steps=True
-max_iterations=4
-max_execution_time=25
-handle_parsing_errors=True
-```
-
-Verbose execution displays tool calls, tool inputs, observations, and final responses in the backend terminal.
-
-The `run_agent()` function collects intermediate steps and returns structured information about the tools used.
-
-This makes it easier to troubleshoot:
-
-- Tool-selection decisions
-- Domain B authentication
-- RAG endpoint communication
-- Retrieval results
-- Wikipedia calls
-- Final answer generation
-
-> **Production consideration:** Verbose logs and tool observations can contain user questions and private document content. Review logging settings and access controls before deploying the application in a sensitive environment.
-
-## 🏗️ System Architecture
-
-The application consists of two backend services and a frontend.
-
-- **Vue Frontend:** Authenticated chat interface.
-- **Domain A:** FastAPI backend, authentication, LangChain agent, and tool orchestration.
-- **Domain B:** Separate private RAG service, retrieval workflow, and knowledge storage.
-
-The private RAG implementation is separated from the agent orchestration code to simplify maintenance.
-
-### Project Structure
-
-The relevant Domain A backend structure is:
+### 🔄 Request Workflow
 
 ```text
-backend/
-├── agent.py
-├── config.py
-└── tools/
-    ├── __init__.py
-    ├── wikipedia.py
-    └── private_rag.py
-```
-
-Other application files, including `main.py`, authentication modules, and dependency files, remain part of the backend project as required by the existing application.
-
-### Module Responsibilities
-
-| File | Responsibility |
-|---|---|
-| `agent.py` | Groq configuration, system prompt, tool registration, agent executor, and `run_agent()` |
-| `tools/private_rag.py` | Domain B authentication, JWT caching, HTTP requests, and RAG result handling |
-| `tools/wikipedia.py` | Wikipedia retrieval implementation |
-| `config.py` | Application configuration and environment variables |
-| `main.py` | FastAPI application and API routes, including the chat endpoint |
-
-The exact layout of authentication modules and other API routes depends on the existing application.
-
-### 🔄 Agent Workflow
-
-```text
-User
-  |
-  v
 Vue 3 Frontend
-  |
-  v
+      |
+      v
 Domain A - FastAPI
-  |
-  v
-LangChain Agent
-  |
-  v
-Groq LLM
-  |
-  +-----------------------+
-  |                       |
-  v                       v
-Private_RAG             Wikipedia
-  |                       |
-  v                       v
-Domain B /ask          Public information
-  |
-  v
-Retrieval and answer generation
-  |
-  v
-Answer and source references
-  |
-  +-----------------------+
-              |
-              v
-      Agent observations
-              |
-              v
-       Final response
-              |
-              v
-         Vue frontend
+      |
+      v
+Authenticate User
+      |
+      v
+Fetch Structured Private RAG Result
+      |
+      v
+Request-Scoped Agent
+      |
+      v
+    Groq LLM
+      |
+      +-------------------+
+      |                   |
+      v                   v
+  Private_RAG          Wikipedia
+  (captured result)    (public retrieval)
+      |                   |
+      v                   v
+    Domain B           Public Sources
+      |                   |
+      +---------+---------+
+                |
+                v
+       Final Agent Response
+                |
+                v
+          Vue Frontend
 ```
 
-The diagram illustrates the available tool paths. The actual sequence depends on the LLM's tool-selection decisions and the system prompt.
+The diagram shows the available components, not a guaranteed execution sequence. The system prompt requires a private RAG lookup before answering, while additional Wikipedia calls depend on agent execution.
 
-#### Private RAG Request Flow
+#### Request-Scoped RAG Result
 
-1. The user submits a question through the Vue application.
-2. Domain A authenticates the user and processes the chat request.
-3. The LangChain agent selects `Private_RAG`.
-4. The RAG tool obtains a valid Domain B JWT, reusing the cached token when possible.
-5. Domain A sends the question to Domain B's protected `/ask` endpoint.
-6. Domain B performs retrieval and generates an answer.
-7. Domain B returns the answer and any source references.
-8. The tool formats the result for the agent.
-9. The agent inspects the observation and generates its final response.
-10. Domain A returns the structured result to the frontend.
+The backend fetches the structured private RAG result once per chat request. `create_request_agent()` then creates a tool that closes over that result.
 
-#### Public Knowledge Request Flow
+This design:
 
-When the agent selects Wikipedia, the Wikipedia tool retrieves public information and returns an observation to the agent. The LLM then uses that observation to formulate its final response.
+- Avoids a second successful Domain B request when the agent invokes `Private_RAG`.
+- Prevents concurrent requests from overwriting one another's captured RAG results.
+- Keeps retrieval handling separate from agent orchestration.
 
-When both tools are selected, the agent can consider both observations before answering.
+The underlying RAG module retries eligible failures according to its configured policy.
 
 ## 📡 Domain A API Endpoints
 
-The following endpoints are exposed by the Domain A backend:
-
 | Method | Endpoint | Description |
 |---|---|---|
-| POST | `/login-spa` | Login for the Vue SPA |
-| POST | `/token` | OAuth2-compatible login for Swagger |
-| POST | `/chat` | Submit a question to the agent |
-| GET | `/health` | Service health check |
-| GET | `/test-groq` | Test the Groq connection |
-| GET | `/test-wikipedia` | Test the Wikipedia integration |
+| `POST` | `/login-spa` | Vue SPA login. |
+| `POST` | `/token` | Swagger authentication. |
+| `POST` | `/chat` | Submit a question to the agent. |
+| `GET` | `/health` | Health check. |
+| `GET` | `/test-groq` | Test Groq connectivity. |
+| `GET` | `/test-wikipedia` | Test Wikipedia retrieval. |
 
-These endpoints reflect the existing application configuration. The private RAG endpoint belongs to Domain B and is called internally by Domain A.
+These endpoints reflect the existing application. The private RAG endpoint is hosted on Domain B and is called internally by Domain A.
 
 ## 📦 Chat Response Format
 
-The `/chat` endpoint returns a structured response containing the agent's actions, observations, and final answer.
+The `/chat` endpoint returns a structured response for the frontend.
 
 ### Example Response
 
@@ -350,68 +180,67 @@ The `/chat` endpoint returns a structured response containing the agent's action
 {
   "response": {
     "action": "Private_RAG",
-    "action_input": "Java Spring Boot",
+    "action_input": "Spring Boot",
     "observation": [
       {
         "tool": "Private_RAG",
-        "tool_input": "Java Spring Boot",
-        "observation": "PRIVATE RAG RESULTS\nStatus: Document sources were returned.\nThe answer was generated by Domain B using its retrieval workflow. Check source relevance before attributing individual claims to documents.\n\nQuestion: Java Spring Boot\nAnswer: In our documentation, **Java Spring Boot** is described as a Java framework that lets you build MVC applications and REST APIs quickly and efficiently. It provides convention‑over‑configuration, embedded servers, and a wide range of starters that simplify the setup and deployment of Java web services.\nSources: ['https://vanillajs.persteenolsen.com/rag-data-three.txt']"
+        "tool_input": "Spring Boot",
+        "observation": "PRIVATE RAG RESULTS..."
       }
     ],
-    "final_answer": "**Java Spring Boot (as described in our documentation)**  \n- A Java framework that lets you build MVC applications and REST APIs quickly and efficiently.  \n- It offers convention‑over‑configuration, embedded servers, and a wide range of starters that simplify the setup and deployment of Java web services.  \n\n*Source:* https://vanillajs.persteenolsen.com/rag-data-three.txt",
+    "final_answer": "The generated answer.",
     "tools_used": [
       "Private_RAG"
     ],
     "source": [
-      "https://vanillajs.persteenolsen.com/rag-data-three.txt"
+      "https://example.com/document.txt"
     ],
     "status": "sources_found"
   }
 }
 ```
 
-This is an illustrative example. Actual tool inputs, observations, and final answers, status and source depend on the question and the agent's execution.
+This is an illustrative example. Actual tool calls, observations, sources, and answers depend on execution.
 
 ### Response Fields
 
 | Field | Description |
 |---|---|
-| `action` | Comma-separated names of tools used, or `"None"` |
-| `action_input` | Input associated with the last executed tool |
-| `observation` | List of tool calls, inputs, and returned observations |
-| `final_answer` | Final answer generated by the agent |
-| `tools_used` | Ordered list of distinct tools invoked |
-| `status` | Private evidence or execution status: sources_found, unverified, error, or unknown |
-| `source` | List of private RAG source references, or [] |
+| `action` | Comma-separated tool names, or `"None"`. |
+| `action_input` | Input associated with the last executed tool. |
+| `observation` | Tool calls, inputs, and returned observations. |
+| `final_answer` | Final answer generated by the agent. |
+| `tools_used` | Ordered list of distinct tools. |
+| `source` | Private RAG source references. |
+| `status` | Private evidence or execution status. |
 
-If the agent does not invoke any tools, `tools_used` is an empty list and `action` is `"None"`.
+The status values are `sources_found`, `unverified`, `error`, or `unknown`.
 
-If agent execution fails, the application returns a structured error response rather than exposing the full exception to the user.
-
+The backend returns a structured error response if agent execution fails, rather than exposing the full exception to the user.
 
 ## ⚙️ Getting Started
 
 ### Prerequisites
 
-Before starting, ensure you have:
+Before running the application, ensure you have:
 
-- Python 3.12
-- A Groq API key
-- Domain A backend configuration
-- A running and accessible Domain B RAG service
-- Domain B service credentials
-- Access to the Vue frontend repository, if using the SPA
+- Python 3.12.
+- A Groq API key.
+- Access to Domain A configuration.
+- A running Domain B RAG service.
+- Domain B service credentials.
+- The companion Vue frontend, if using the SPA.
 
-### 1. Clone the Backend Repository
+### 1. Clone the Repository
 
-Replace the placeholder repository URL with your actual backend repository.
+Replace the placeholder URL with your actual backend repository URL.
 
 ```bash
 git clone https://github.com/your-username/your-repository.git
 cd your-repository
 ```
 
-If your backend resides in a subdirectory, navigate to that directory before continuing.
+Navigate to the backend directory if necessary.
 
 ### 2. Create a Virtual Environment
 
@@ -431,30 +260,24 @@ source venv/bin/activate
 
 ### 3. Install Dependencies
 
+Install the project dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-Ensure the dependency file includes the packages required by your application, including:
-
-- FastAPI
-- Uvicorn
-- Requests
-- LangChain
-- The LangChain Groq integration
-- Your existing Wikipedia dependencies
-
-Use dependency versions compatible with the existing application.
+Ensure `requirements.txt` includes FastAPI, Uvicorn, Requests, LangChain, the LangChain Groq integration, and the dependencies used by your Wikipedia implementation.
 
 ### 4. Configure Environment Variables
 
-Create a `.env` file in the location expected by your application's configuration.
+Create a `.env` file in the location expected by your existing configuration.
 
 Example configuration:
 
 ```dotenv
 SECRET_KEY=replace_with_a_secure_random_secret
 GROQ_API_KEY=your_groq_api_key
+
 FAKE_USERNAME=admin
 FAKE_PASSWORD=replace_with_a_secure_password
 
@@ -468,17 +291,23 @@ JWT_B_CACHE_SECONDS=300
 HTTP_TIMEOUT_SECONDS=20
 ```
 
-> **Important:** The Domain B values above are illustrative. Use the actual endpoint paths, credentials, and configuration expected by your existing `config.py` and Domain B API. The timeout and JWT cache values should match your desired configuration.
+These values are examples. Use the actual environment variable names and endpoint paths defined in `config.py` and the Domain B implementation.
 
-Generate a random secret for JWT signing:
+Generate a random JWT signing secret if required:
 
 ```bash
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Do not commit `.env` to version control. Ensure it is covered by your `.gitignore` file.
+**Important security practices:**
 
-### 5. Start Domain A
+- Ensure `.env` is listed in `.gitignore`.
+- Never commit real credentials, API keys, passwords, or JWT secrets.
+- Keep Domain B service credentials exclusively on the backend.
+- Use HTTPS for deployed services.
+- Replace demo authentication settings with a production-grade identity solution before public deployment.
+
+### 5. Start the Backend
 
 From the directory containing `main.py`, run:
 
@@ -486,60 +315,54 @@ From the directory containing `main.py`, run:
 uvicorn main:app --reload
 ```
 
-The backend will normally be available at:
+The backend will be available at the following local URLs:
 
-- **API:** http://127.0.0.1:8000
-- **Swagger documentation:** http://127.0.0.1:8000/docs
+| Service | URL |
+|---|---|
+| API | http://127.0.0.1:8000 |
+| Swagger UI | http://127.0.0.1:8000/docs |
 
-Use the host and port configured for your application if they differ.
+The `--reload` option is intended for local development, not production deployment.
 
-### 6. Start the Vue Frontend
+### 6. Start the Frontend
 
-The companion frontend is available at:
+Clone or open the companion Vue application:
 
-[vue-fastapi-jwt-auth-ai-agent-four](https://github.com/persteenolsen/vue-fastapi-jwt-auth-ai-agent-four)
+**Repository:** `vue-fastapi-jwt-auth-ai-agent-four`
 
 Follow its README for installation, environment configuration, and startup instructions.
 
+Ensure the frontend API configuration points to the correct Domain A backend URL.
+
 ## 🔐 Authentication Flow
 
-### Vue Single Page Application
+### User Authentication
 
-1. The user logs in through `/login-spa`.
-2. Domain A returns the frontend authentication token.
-3. The frontend stores the token according to its authentication implementation.
-4. The frontend sends authenticated requests with the following header:
+1. The user logs in through `/login-spa` or `/token`.
+2. Domain A issues the frontend authentication token.
+3. The frontend sends authenticated requests using a bearer token:
 
    ```http
    Authorization: Bearer <USER_ACCESS_TOKEN>
    ```
 
-5. The protected `/chat` endpoint processes the question.
-
-### Swagger UI
-
-1. Open `/docs`.
-2. Authenticate through `/token`.
-3. Use Swagger's authorization functionality.
-4. Submit requests to protected endpoints.
+4. The protected `/chat` endpoint processes the request.
 
 ### Domain A to Domain B
 
-The private RAG tool uses a separate service-to-service authentication flow:
-
-1. Domain A sends configured service credentials to Domain B's login endpoint.
+1. Domain A authenticates using configured service credentials.
 2. Domain B returns an access token.
 3. Domain A caches the token in memory.
-4. Domain A sends requests to `/ask` with the bearer token.
-5. If a request returns HTTP `401 Unauthorized`, Domain A refreshes the token and retries once.
+4. Domain A calls the protected RAG endpoint using a bearer token.
+5. If the request receives HTTP `401 Unauthorized`, Domain A refreshes the JWT and retries the request once.
 
-The user's frontend JWT and Domain A's service JWT for Domain B serve different purposes and should not be confused.
+The frontend JWT and the Domain A-to-Domain B service JWT are separate credentials with different purposes.
 
-## 🧪 Testing the Agent
+## 🧪 Testing
 
-The stable baseline has been tested after separating the private RAG code into `tools/private_rag.py`.
+The following scenarios can be used to validate the agent's behavior and integration.
 
-### Test 1: Private Knowledge
+### 1. Private Knowledge
 
 **Question:**
 
@@ -547,27 +370,24 @@ The stable baseline has been tested after separating the private RAG code into `
 
 **Expected behavior:**
 
-- The agent invokes `Private_RAG`.
-- Domain A authenticates with Domain B.
-- Domain B receives the question.
-- The agent inspects the returned answer and sources.
-- The final response reflects the retrieved information.
+- The private RAG service is queried.
+- Domain B returns an answer and any available source references.
+- The agent inspects the private RAG result.
+- The final response reflects the available evidence.
 
-### Test 2: Public Knowledge
+### 2. Public Knowledge
 
 **Question:**
 
 > What is the capital of Japan?
 
-**Expected behavior under the current prompt:**
+**Expected behavior:**
 
-- The agent calls `Private_RAG` first.
-- If useful, the agent subsequently calls Wikipedia.
-- The final answer distinguishes public information from private evidence when relevant.
+- Private RAG is queried first under the current prompt.
+- Wikipedia can be used to supplement the result.
+- The agent distinguishes public knowledge from private evidence when relevant.
 
-The agent may decide not to invoke Wikipedia if it considers the existing information sufficient.
-
-### Test 3: Combined Knowledge
+### 3. Combined Knowledge
 
 **Question:**
 
@@ -575,132 +395,88 @@ The agent may decide not to invoke Wikipedia if it considers the existing inform
 
 **Expected behavior:**
 
-- The agent can invoke `Private_RAG` for internal evidence.
-- The agent can invoke Wikipedia for relevant public information.
-- The final answer distinguishes the sources appropriately.
+- Private RAG supplies the available internal evidence.
+- Wikipedia can provide supplementary public information.
+- The final answer distinguishes the two knowledge sources.
 
-### Test 4: Greeting
+### 4. Missing Private Sources
 
-**Question:**
-
-> Hi, how are you?
-
-**Expected behavior under the current system prompt:**
-
-- The prompt instructs the agent to call `Private_RAG` before answering.
-- The agent may therefore call `Private_RAG` even though the greeting does not require retrieval.
-
-This is a known efficiency limitation, not a failure of the current baseline.
-
-### Test 5: Missing Private Sources
-
-Use a question unlikely to match your private documents.
+Ask a question unlikely to match the private documents.
 
 **Expected behavior:**
 
-- Domain B may return an answer with an empty `sources` list.
-- The private RAG tool marks the answer as unverified by retrieved documents.
-- The agent does not present that answer as verified internal knowledge.
-- Wikipedia may be used for independent public information when appropriate.
+- Domain B may return an answer without document sources.
+- The result is marked `unverified`.
+- The agent is instructed not to present the answer as verified private knowledge.
+
+### 5. Error Handling
+
+Test unavailable Domain B endpoints, timeouts, invalid credentials, and server errors in a controlled environment.
+
+**Expected behavior:**
+
+- The RAG module applies its configured retry and token-refresh behavior.
+- Failed lookups return structured error information.
+- Agent failures return a safe error response.
 
 ## 🖥️ Vue Frontend
 
-The companion Vue 3 application provides the user-facing interface for the backend.
+The companion Vue 3 application provides:
 
-**Repository:** [vue-fastapi-jwt-auth-ai-agent-four](https://github.com/persteenolsen/vue-fastapi-jwt-auth-ai-agent-four)
+- JWT authentication.
+- Pinia state management.
+- An AI chat interface.
+- API integration.
+- Final answer display.
+- Tool names, inputs, and observations.
+- Visibility into agent execution.
 
-Frontend capabilities include:
+**Companion repository:** `vue-fastapi-jwt-auth-ai-agent-four`
 
-- JWT authentication
-- Pinia state management
-- AI chat interface
-- API integration
-- Display of final answers
-- Display of selected agent actions
-- Display of tool inputs
-- Display of tool observations
-- Visibility into the agent workflow
-
-The frontend communicates with Domain A through the backend's REST API.
-
-Domain B's service credentials and JWT must remain on the server and must never be exposed to the browser.
+Domain B service credentials and tokens must remain on the backend and must never be exposed to the browser.
 
 ## ⚠️ Current Limitations
 
-The current baseline intentionally prioritizes simplicity and a working end-to-end architecture.
-
-Known limitations include:
-
-- Tool selection depends on the LLM and system prompt.
-- `Private_RAG` is instructed to run before every answer, including greetings.
-- Wikipedia retrieval is limited by the current Wikipedia tool implementation.
-- Answers without private document sources are not verified against retrieved private documents.
-- A returned source does not automatically guarantee retrieval relevance.
-- Conversation memory is not implemented in the agent shown here.
-- Streaming responses are disabled.
-- The JWT cache is process-local and is not shared across multiple worker processes.
-- The agent uses a single execution loop with a maximum of four iterations and a 25-second execution-time limit.
-- The existing demo authentication configuration may require hardening before production deployment.
+- The agent relies on the LLM and system prompt for additional tool selection.
+- Private RAG is queried before every answer, including greetings.
+- Answers without private document sources are not verified against retrieved documents.
+- Source references do not automatically establish that every answer claim is supported.
+- Wikipedia sources are not automatically included in the private source field.
+- Conversation memory is not implemented in the shown agent.
+- Streaming is disabled.
+- The JWT cache is process-local and is not shared between worker processes.
+- Agent execution is limited to four iterations and a 25-second execution-time limit.
+- Demo authentication settings may require hardening before production deployment.
 
 ## 🚀 Future Improvements
 
-Potential improvements can be introduced incrementally without redesigning the stable architecture.
+Potential improvements include:
 
-### Agent and Retrieval
+- Conditional routing to avoid unnecessary retrieval.
+- Improved document ranking and retrieval evaluation.
+- More detailed citations and document metadata.
+- Automated tests for authentication, retries, and tool execution.
+- Structured logging, latency monitoring, and health checks.
+- Conversation memory where required.
+- Production-grade identity management, secrets handling, and rate limiting.
+- Automated deployment and regression testing.
 
-- Add conditional routing to avoid unnecessary tool calls.
-- Improve retrieval relevance and document ranking.
-- Add document metadata and more detailed citations.
-- Evaluate retrieval quality with a small test dataset.
-- Introduce conversation memory when required.
-- Add further tools as needed.
-
-### Performance and Reliability
-
-- Add structured logging and monitoring.
-- Measure latency separately for each tool.
-- Introduce retry policies for transient service failures.
-- Improve timeout handling and health checks.
-- Add automated tests for tool execution and authentication.
-
-### Production Readiness
-
-- Replace demo authentication with a suitable production identity system.
-- Strengthen secrets management.
-- Apply appropriate rate limits and access controls.
-- Review private-data logging and retention.
-- Add automated deployment and regression testing.
-
-These are optional future improvements. The current baseline should remain unchanged unless a specific improvement is needed.
+These improvements are optional and can be introduced incrementally without redesigning the current architecture.
 
 ## 💡 Design Philosophy
 
-Keep the architecture simple, separate responsibilities, and improve the system incrementally.
+The project prioritizes a working, maintainable architecture through the following principles:
 
-The project follows these principles:
-
-- **Separation of concerns:** Agent orchestration and private RAG communication are maintained in separate modules.
-- **Native tool calling:** LangChain manages tool invocation and observations.
-- **Source awareness:** Private answers without retrieved document sources are explicitly marked unverified.
-- **Transparency:** Intermediate steps help developers inspect tool execution.
-- **Maintainability:** Each tool can be developed and tested independently.
+- **Separation of concerns:** Agent orchestration and RAG communication remain independent.
+- **Native tool calling:** LangChain manages tool execution and observations.
+- **Source awareness:** Private answers without retrieved sources are marked unverified.
+- **Request isolation:** Each chat request receives its own agent and captured RAG result.
+- **Observability:** Intermediate steps help developers inspect execution.
 - **Security:** Service credentials remain on the backend.
-- **Incremental development:** Changes are tested against a known working baseline.
-
-## 🙌 Final Notes
-
-This project demonstrates how FastAPI, Vue 3, Pinia, LangChain, Groq, JWT authentication, and a separate private RAG service can work together to provide an agentic knowledge assistant.
-
-Domain A manages the authenticated chat API and agent orchestration. Its private RAG integration is isolated in `tools/private_rag.py`, while Wikipedia is maintained in `tools/wikipedia.py`.
-
-Domain B retains responsibility for its own authentication endpoint, retrieval workflow, document sources, and answer generation.
-
-The current implementation has been tested after the RAG refactoring, including private-only retrieval, public-information retrieval, and questions where both tools can be used.
-
-This working version serves as the project's stable baseline for future development.
+- **Incremental development:** Changes build on a tested baseline.
 
 ## 📄 License
 
-MIT License
+This project is intended to be distributed under the **MIT License**.
 
-If you distribute this project, include the appropriate MIT license text in a `LICENSE` file at the repository root.
+Include the complete MIT license text in a `LICENSE` file at the repository root before distributing the project.
