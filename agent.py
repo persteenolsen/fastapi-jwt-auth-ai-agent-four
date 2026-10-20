@@ -179,7 +179,14 @@ def create_request_agent(
     def private_rag_tool(query: str) -> str:
         """Return this request's already-fetched RAG result."""
         return format_rag_result(
-            query=query,
+            
+            # 20-10-2026
+            # Avoid displaying a potentially misleading question for the cached RAG result.
+            query="",
+            
+            # 20-10-2026 - The above is used !
+            # query=query,
+            
             result=rag_result,
      )
 

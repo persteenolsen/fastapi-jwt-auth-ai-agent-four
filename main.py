@@ -11,7 +11,7 @@ app = FastAPI(
         "20-10-2026 - FastAPI backend with JWT authentication serving a LangChain-based "
         "agentic RAG system powered by Groq. The LLM dynamically selects "
         "between RAG-based knowledge retrieval and Wikipedia searches "
-        "to generate context-aware responses"
+        "to generate context-aware responses."
     ),
     version="0.0.3", 
     contact={
