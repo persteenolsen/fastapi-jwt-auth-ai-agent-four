@@ -13,7 +13,7 @@ The architecture separates agent orchestration, private RAG communication, and p
 
 ## 🌐 Companion Vue Frontend
 
-**Repository:** [vue-fastapi-jwt-auth-ai-agent-four](https://github.com/your-username/vue-fastapi-jwt-auth-ai-agent-four)
+**Repository:** [vue-fastapi-jwt-auth-ai-agent-four](https://github.com/persteenolsen/vue-fastapi-jwt-auth-ai-agent-four)
 
 > Replace the placeholder GitHub URL with the actual frontend repository URL.
 
