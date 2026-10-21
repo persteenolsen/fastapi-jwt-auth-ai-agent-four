@@ -1,0 +1,177 @@
+Complete Flow Summary 
+
+USER /ask → LANGCHAIN AGENT → PRIVATE RAG → VUE RESPONSE
+
+COMPLETE FLOW SUMMARY
+
+1. USER REQUEST User sends a question to POST /ask.
+
+2. VALIDATE QUESTION run_agent(query) validates and cleans the input.
+
+3. RETRIEVE PRIVATE KNOWLEDGE rag_search_structured(clean_query) authenticates with Domain B, calls its /ask endpoint, and receives the structured rag_result.
+
+4. CREATE THE AGENT create_request_agent(rag_result) creates a request-specific LangChain agent with Private_RAG and Wikipedia tools.
+
+5. FORMAT THE RAG RESULT When the LLM calls Private_RAG, format_rag_result() converts the structured result into readable text for the LLM.
+
+6. GENERATE THE ANSWER The LLM examines the private RAG result and optionally calls Wikipedia before generating its final answer.
+
+7. BUILD THE RESPONSE run_agent() combines the agent's final answer and execution details with source and status metadata from the original structured rag_result.
+
+8. RETURN TO VUE The /ask endpoint returns structured JSON to the Vue frontend.
+
+THE IMPORTANT PART:
+
+
+              PRIVATE RAG RESULT
+                     |
+         +-----------+-----------+
+         |                       |
+         v                       v
+  FORMATTED STRING        ORIGINAL DICTIONARY
+         |                       |
+         v                       v
+   Used by the LLM         Used by run_agent()
+   for reasoning            for source/status
+         |                       |
+         v                       v
+   FINAL ANSWER            RESPONSE METADATA
+         |                       |
+         +-----------+-----------+
+                     |
+                     v
+                VUE RESPONSE
+
+
+NOTE: Private RAG is called once before the agent starts. The Private_RAG tool formats and exposes the existing result; it does not call Domain B a second time.
+
+DETAILED EXECUTION FLOW OVERVIEW
+
+The user sends a question to /ask. Domain B retrieves private knowledge first. The LangChain agent then examines the result and can optionally use Wikipedia. Finally, the backend returns the answer and relevant metadata to the Vue frontend.
+
+STEP 1 — USER REQUEST
+
+The user sends a question to the /ask API endpoint.
+
+The endpoint calls run_agent(query) in agent.py.
+
+STEP 2 — VALIDATE THE QUESTION
+
+run_agent() checks that the input is a non-empty string and removes unnecessary whitespace using query.strip().
+
+Invalid input returns a message asking the user to enter a question.
+
+STEP 3 — RETRIEVE PRIVATE KNOWLEDGE
+
+run_agent() calls:
+
+rag_search_structured(clean_query)
+
+This function in private_rag.py sends the question to Domain B's /ask endpoint to retrieve private knowledge before the agent starts.
+
+STEP 4 — AUTHENTICATE AND CALL DOMAIN B
+
+login_to_domain_b() obtains a JWT when necessary and caches it for reuse during its configured lifetime.
+
+The JWT is included in the Authorization header when sending the question to Domain B.
+
+The HTTP client handles configured retries, timeouts, server errors, and JWT refresh after HTTP 401.
+
+STEP 5 — RECEIVE THE STRUCTURED RAG RESULT
+
+Domain B returns an answer and source references.
+
+rag_search_structured() normalizes the response into a dictionary:
+
+{
+    "answer": ...,
+    "source": [...],
+    "status": ...,
+    "error": ...
+}
+
+
+The result is stored in rag_result inside run_agent().
+
+The status indicates whether sources were found, the answer is unverified, or an error occurred.
+
+STEP 6 — CREATE THE LANGCHAIN AGENT
+
+run_agent() passes rag_result to:
+
+create_request_agent(rag_result)
+
+This creates a request-specific agent with two tools:
+
+Private_RAG — exposes the already-fetched RAG result.
+Wikipedia   — searches public information when useful.
+
+Each Private_RAG tool captures its own request's rag_result. It does not call Domain B again.
+
+STEP 7 — FORMAT THE RAG RESULT FOR THE LLM
+
+When the LLM calls Private_RAG, the tool executes:
+
+format_rag_result(query="", result=rag_result)
+
+This converts the structured dictionary into readable text containing the answer, sources, and verification status.
+
+The formatted text is returned to the LLM as a tool observation.
+
+IMPORTANT: The system prompt instructs the LLM to always call Private_RAG before answering, but the instruction does not technically guarantee that the LLM will call it.
+
+If the LLM skips the tool call, the private lookup has still happened, but the formatted result is not passed to the LLM through the Private_RAG tool.
+
+The empty query="" is intentional. The actual user question is supplied separately to the agent.
+
+STEP 8 — GENERATE THE FINAL ANSWER
+
+The agent is executed using:
+
+request_executor.invoke({"input": clean_query})
+
+The LLM receives the original user question and the results of any tools it calls.
+
+It should inspect Private_RAG and can call Wikipedia when additional public information is useful.
+
+The agent is configured for a maximum of four iterations and a 25-second execution limit.
+
+STEP 9 — BUILD THE RESPONSE
+
+After the agent finishes, run_agent() collects:
+
+final_answer  <- result["output"]
+tool details  <- result["intermediate_steps"]
+source        <- original rag_result
+status        <- original rag_result
+
+Source references are deduplicated, and the status is normalized.
+
+The tools_used list is built from the agent's intermediate steps. The code also adds Private_RAG if it is missing, because the private lookup was performed before the agent started.
+
+Consequently, tools_used does not always represent only the tools actually called by the LLM.
+
+STEP 10 — RETURN THE RESPONSE TO VUE
+
+run_agent() returns structured JSON containing fields such as:
+
+final_answer
+tools_used
+observation
+source
+status
+
+The /ask endpoint returns this response to the Vue frontend, which can display the answer and relevant metadata.
+
+If an exception occurs during agent execution, run_agent() returns a structured error response instead.
+
+IMPORTANT DISTINCTION
+
+The RAG result has two representations:
+
+FORMATTED STRING Created by format_rag_result(). Passed to the LLM only when it calls Private_RAG.
+ORIGINAL STRUCTURED DICTIONARY Stored in rag_result. Used by run_agent() to populate the source and status fields in the response returned to Vue.
+
+The final answer comes from the LangChain agent. The source and status metadata come from the original structured RAG result.
+
+Having source references does not automatically prove that every claim in the answer is supported by those sources.
